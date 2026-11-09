@@ -1,13 +1,16 @@
 import os
+import asyncio
 import discord
 from discord.ext import commands
 import google.generativeai as genai
 
+# إعداد الذكاء الاصطناعي
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-def generate_smart_reply(prompt_text):
+# دالة توليد الرد في مسار معزول
+def run_gemini(prompt_text):
     candidate_models = [
         "gemini-3.8-flash",
         "gemini-3.0-flash",
@@ -31,9 +34,9 @@ def generate_smart_reply(prompt_text):
                 return response.text[:1900]
         except Exception:
             continue
-    return "تعذر الاتصال بموديل الذكاء الاصطناعي."
+    return "نعتذر منك يا مديرنا، تعذر الاتصال بموديل الذكاء الاصطناعي حالياً."
 
-# بطاقات شخصيات الفريق تحت إدارتك المباشرة
+# بطاقات شخصيات الفريق تحت قيادتك كمدير للاستوديو
 TEAM_PERSONAS = {
     "معن": {
         "title": "Technical Architect AI",
@@ -76,19 +79,18 @@ async def get_or_create_webhook(channel):
 def normalize_name(text):
     return text.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه").replace("ّ", "").strip()
 
-async def call_ai_persona(persona_key, user_prompt, chat_context=""):
+def build_prompt(persona_key, user_prompt, chat_context=""):
     persona = TEAM_PERSONAS[persona_key]
-    full_prompt = (
+    return (
         f"{persona['prompt']}\n\n"
-        f"المحادثة السابقة في الاستوديو:\n{chat_context}\n\n"
+        f"سياق المحادثة الأخيرة في الاستوديو:\n{chat_context}\n\n"
         f"توجيه المدير (صاحب الاستوديو):\n{user_prompt}\n\n"
         f"أجب بصفتك {persona_key} ({persona['title']}) بالعربية، بأسلوب موظف محترف يرفع تقريره أو اقتراحه لمديره."
     )
-    return generate_smart_reply(full_prompt)
 
 @bot.event
 async def on_ready():
-    print(f"استوديو الألعاب جاهز بإدارة المدير: {bot.user.name}")
+    print(f"استوديو الألعاب جاهز ومتصل دائماً: {bot.user.name}")
 
 @bot.event
 async def on_message(message):
@@ -110,7 +112,9 @@ async def on_message(message):
                 history_msgs.append(f"{prev_msg.author.display_name}: {prev_msg.content}")
             context_str = "\n".join(reversed(history_msgs))
 
-            reply_text = await call_ai_persona(target_member, content, context_str)
+            full_prompt = build_prompt(target_member, content, context_str)
+            # تشغيل الذكاء الاصطناعي في Thread منفصل ليبقى البوت Online دائماً
+            reply_text = await asyncio.to_thread(run_gemini, full_prompt)
             persona = TEAM_PERSONAS[target_member]
 
             webhook = await get_or_create_webhook(message.channel)
