@@ -1,5 +1,5 @@
 import os
-import json
+import asyncio
 from collections import deque
 import discord
 from discord.ext import commands
@@ -10,61 +10,69 @@ if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
 WEBHOOK_CACHE = {}
-CHAT_MEMORY = deque(maxlen=6)
+# ذاكرة كبيرة تحفظ تفاصيل المشروع والأكواد بين الموظفين
+PROJECT_MEMORY = deque(maxlen=15)
 
-# قائمة الموديلات المجانية (إذا انتهى رصيد واحد ينتقل للذي يليه تلقائياً في أجزاء من الثانية)
+# جلب كل الموديلات الشغالة في حسابك للتبديل التلقائي لو خلص رصيد واحد منها
 AVAILABLE_MODELS = []
 
-def init_models():
+def refresh_models():
     global AVAILABLE_MODELS
-    preferred_order = [
-        "gemini-3.8-flash-lite",
-        "gemini-3.8-flash-8b",
-        "gemini-3.0-flash-lite",
-        "gemini-2.5-flash-lite",
-        "gemini-3.8-flash",
-        "gemini-3.8-pro",
-    ]
     try:
-        fetched = [
+        models = [
             m.name.replace("models/", "")
             for m in genai.list_models()
             if "generateContent" in m.supported_generation_methods
         ]
-        # رتب الموديلات بحيث يبدأ بموديلات Lite ذات الرصيد المجاني الضخم (1500 طلب يومياً)
-        lite_models = [m for m in fetched if "lite" in m or "8b" in m]
-        other_models = [m for m in fetched if m not in lite_models]
-        AVAILABLE_MODELS = lite_models + other_models
+        # نرتب الموديلات القوية والحديثة أولاً
+        priority = [m for m in models if "flash" in m or "pro" in m]
+        AVAILABLE_MODELS = priority if priority else models
     except Exception:
-        AVAILABLE_MODELS = preferred_order
+        AVAILABLE_MODELS = ["gemini-3.8-flash", "gemini-3.0-flash", "gemini-2.5-flash"]
 
-init_models()
+refresh_models()
 
+# الموظفون الخمسة بمهام تنفيذية إنتاجية حقيقية (بدون اختصار مخل)
 TEAM_PERSONAS = {
+    "ملهم": {
+        "title": "Creative Ideator & Game Designer AI",
+        "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Molhem&backgroundColor=ffe082",
+        "prompt": (
+            "أنت 'ملهم' مصمم الألعاب ومبتكر الأفكار في استوديو Godot 4. المستخدم هو المدير التنفيذي.\n"
+            "مهمتك التنفيذية: لا تكتفِ بالكلام النظري؛ اكتب وثيقة تصميم اللعبة (GDD) الفعلية وتشمل: القصة، ميكانيكيات اللعب التفصيلية، التحكم، وتصميم المرحلة الأولى، وسلمها لـ 'معن' ليبدأ الهيكلة."
+        )
+    },
     "معن": {
         "title": "Technical Architect AI",
         "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Maan&backgroundColor=c0aede",
-        "prompt": "أنت 'معن' كبير مهندسي النظم في Godot 4. المستخدم هو مدير الاستوديو. صمم شجرة المشاهد (Scene Trees)، المجلدات، والـ EventBus باختصار ودقة هندسية."
-    },
-    "ملهم": {
-        "title": "Creative Ideator AI",
-        "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Molhem&backgroundColor=ffe082",
-        "prompt": "أنت 'ملهم' مفكر الاستوديو ومصمم الألعاب. المستخدم هو مدير الاستوديو. ابتكر أفكار ألعاب، قصص، ووثائق GDD مركزة ومبهرة."
+        "prompt": (
+            "أنت 'معن' كبير المعماريين التقنيين لمحرك Godot 4. المستخدم هو المدير التنفيذي.\n"
+            "مهمتك التنفيذية: بناءً على تصميم ملهم وأمر المدير، ارسم شجرة المشاهد الكاملة (Scene Tree) والعقد (Nodes) بدقة، وهيكل مجلدات res://، ونظام الإشارات (Signals/EventBus)، وحدد الملفات المطلوب من 'هتان' برمجتها."
+        )
     },
     "هتان": {
         "title": "Game Developer AI",
         "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Hattan&backgroundColor=d1f4c9",
-        "prompt": "أنت 'هتّان' مبرمج GDScript 2.0 في Godot 4. المستخدم هو مدير الاستوديو. اكتب كود GDScript نظيف وجاهز للنسخ مع Static Typing مباشرة بدون مقدمات."
+        "prompt": (
+            "أنت 'هتّان' المبرمج الرئيسي بلغة GDScript 2.0 في Godot 4. المستخدم هو المدير التنفيذي.\n"
+            "مهمتك التنفيذية: اكتب أكواد GDScript الفعلية الكاملة والجاهزة للتشغيل (حركة اللاعب، الفيزياء، الأنظمة، التحكم) داخل مربعات كود ```gdscript مع استخدام Static Typing، بناءً على هيكلة معن."
+        )
     },
     "امير": {
-        "title": "Game Artist AI",
-        "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Ameer&backgroundColor=ffd5dc",
-        "prompt": "أنت 'أمير' فنان الألعاب ومصمم الواجهات. المستخدم هو مدير الاستوديو. اعطِ برومبتات توليد الرسوم، الألوان، وتصميم عُقد Control في Godot مباشرة."
+        "title": "Game Artist & UI/UX AI",
+        "avatar": "[https://api.dicebear.com/7.x/bottts/png?seed=Ameer&backgroundColor=ffd5dc](https://api.dicebear.com/7.x/bottts/png?seed=Ameer&backgroundColor=ffd5dc)",
+        "prompt": (
+            "أنت 'أمير' فنان الألعاب ومصمم الواجهات في Godot 4. المستخدم هو المدير التنفيذي.\n"
+            "مهمتك التنفيذية: اكتب البرومبتات الجاهزة لتوليد رسوم الشخصيات والبيئات (Sprites/Tilesets) بمقاساتها، وصمم شجرة عُقد الواجهة (Control Nodes / HUD) ولوحة الألوان بالـ Hex Codes."
+        )
     },
     "احسان": {
         "title": "QA Tester AI",
-        "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Ihsan&backgroundColor=ffdfba",
-        "prompt": "أنت 'إحسان' مهندس جودة واختبار الألعاب. المستخدم هو مدير الاستوديو. افحص الكود، استخرج الثغرات، واكتب اختبارات GUT وتقارير الأخطاء باختصار."
+        "avatar": "[https://api.dicebear.com/7.x/bottts/png?seed=Ihsan&backgroundColor=ffdfba](https://api.dicebear.com/7.x/bottts/png?seed=Ihsan&backgroundColor=ffdfba)",
+        "prompt": (
+            "أنت 'إحسان' مهندس الجودة واختبار الألعاب في Godot 4. المستخدم هو المدير التنفيذي.\n"
+            "مهمتك التنفيذية: راجع كود هتان وهيكلة معن، واستخرج أي ثغرات أو أخطاء محتملة، واكتب كود اختبار وحدة فعلي باستخدام GUT Framework للتأكد من سلامة اللعبة."
+        )
     }
 }
 
@@ -87,30 +95,46 @@ async def get_fast_webhook(channel):
     WEBHOOK_CACHE[channel.id] = wh
     return wh
 
-async def generate_with_fallback(prompt_text):
+async def send_long_webhook(webhook, text, username, avatar_url):
+    # تقسيم الرسائل الطويلة (مثل الأكواد الكاملة) حتى لا يرفضها ديسكورد
+    chunks = [text[i:i+1900] for i in range(0, len(text), 1900)]
+    for chunk in chunks:
+        await webhook.send(content=chunk, username=username, avatar_url=avatar_url)
+
+async def execute_agent_work(member, user_order):
+    persona = TEAM_PERSONAS[member]
+    project_context = "\n---\n".join(PROJECT_MEMORY)
+    full_prompt = (
+        f"{persona['prompt']}\n\n"
+        f"=== سجل عمل الفريق والمشروع الحالي ===\n{project_context}\n\n"
+        f"=== أمر المدير التنفيذي الحالي ===\n{user_order}\n\n"
+        f"نفذ مهمتك كاملة الآن بصفتك {member} ({persona['title']}) وقدم شغلك الفعلي للمدير:"
+    )
+
     if not AVAILABLE_MODELS:
-        init_models()
+        refresh_models()
+
     for model_name in list(AVAILABLE_MODELS):
         try:
             model = genai.GenerativeModel(
                 model_name=model_name,
-                generation_config={"max_output_tokens": 900, "temperature": 0.6}
+                generation_config={"max_output_tokens": 2048, "temperature": 0.7}
             )
-            response = await model.generate_content_async(prompt_text)
+            response = await model.generate_content_async(full_prompt)
             if response and response.text:
-                return response.text[:1900]
+                return response.text
         except Exception as e:
-            err_str = str(e)
-            # إذا انتهت حصة هذا الموديل (429) أو غير متاح (404)، انقله لآخر القائمة وجرب الموديل التالي فوراً!
-            if "429" in err_str or "404" in err_str or "quota" in err_str.lower():
+            err = str(e)
+            if "429" in err or "404" in err or "quota" in err.lower():
                 AVAILABLE_MODELS.remove(model_name)
                 AVAILABLE_MODELS.append(model_name)
+                await asyncio.sleep(1)
                 continue
-    return "جميع الموديلات المجانية وصلت للحد الأقصى اللحظي، انتظر دقيقة وجرب مجدداً أو أضف مفتاح API جديد."
+    return "تم الوصول للحد اليومي المجاني لمفتاح Gemini API الحالي. يمكنك إنشاء مفتاح جديد في ثوانٍ من Google AI Studio أو الانتظار لتجدد الحصة."
 
 @bot.event
 async def on_ready():
-    print(f"Smart Quota Studio Online: {bot.user.name} | Models: {AVAILABLE_MODELS}")
+    print(f"Game Production Studio Active: {bot.user.name}")
 
 @bot.event
 async def on_message(message):
@@ -122,52 +146,33 @@ async def on_message(message):
         return
 
     norm_content = normalize_name(content)
-    webhook = await get_fast_webhook(message.channel)
-    context_str = "\n".join(CHAT_MEMORY)
-    CHAT_MEMORY.append(f"المدير: {content}")
 
-    # إذا نادى المدير "يا فريق" -> نرسل طلباً واحداً فقط يوفر الرصيد ويقسم الرد على الـ 5 موظفين!
-    if "فريق" in norm_content or "الكل" in norm_content or "شباب" in norm_content:
-        combined_prompt = (
-            f"سياق المحادثة:\n{context_str}\n"
-            f"توجيه المدير للفريق بالكامل: {content}\n\n"
-            "اكتب رد كل موظف من الخمسة باختصار شديد (سطرين لكل موظف) بالصيغة التالية تماماً:\n"
-            "[معن]: رد معن هنا\n"
-            "[ملهم]: رد ملهم هنا\n"
-            "[هتان]: رد هتان هنا\n"
-            "[امير]: رد امير هنا\n"
-            "[احسان]: رد احسان هنا"
-        )
-        raw_reply = await generate_with_fallback(combined_prompt)
-        for member, persona in TEAM_PERSONAS.items():
-            tag = f"[{member}]:"
-            if tag in raw_reply:
-                part = raw_reply.split(tag)[1].split("[")[0].strip()
-                if part:
-                    await webhook.send(
-                        content=part,
-                        username=f"{member} | {persona['title']}",
-                        avatar_url=persona["avatar"]
-                    )
+    # تحديد من الموظف المطلوب (أو الفريق كامل بالترتيب الهندسي: ملهم -> معن -> هتان -> امير -> احسان)
+    if any(w in norm_content for w in ["فريق", "الكل", "شباب", "ابداوا", "ابدؤوا", "نفذوا"]):
+        targets = ["ملهم", "معن", "هتان", "امير", "احسان"]
+    else:
+        targets = [k for k in TEAM_PERSONAS.keys() if normalize_name(k) in norm_content]
+
+    if not targets:
         return
 
-    # إذا نادى موظفاً محدداً بالاسم
-    targets = [k for k in TEAM_PERSONAS.keys() if normalize_name(k) in norm_content]
+    PROJECT_MEMORY.append(f"أمر المدير: {content}")
+    webhook = await get_fast_webhook(message.channel)
+
     for member in targets:
         persona = TEAM_PERSONAS[member]
-        full_prompt = (
-            f"{persona['prompt']}\n"
-            f"سياق المحادثة:\n{context_str}\n"
-            f"أمر المدير: {content}\n"
-            f"نفذ الأمر مباشرة بصفتك {member}:"
-        )
-        reply_text = await generate_with_fallback(full_prompt)
-        CHAT_MEMORY.append(f"{member}: {reply_text[:150]}")
-        await webhook.send(
-            content=reply_text,
-            username=f"{member} | {persona['title']}",
-            avatar_url=persona["avatar"]
-        )
+        async with message.channel.typing():
+            work_output = await execute_agent_work(member, content)
+            # حفظ شغل الموظف في ذاكرة المشروع ليقرأه الموظف الذي بعده ويبني عليه!
+            PROJECT_MEMORY.append(f"مخرجات {member} ({persona['title']}):\n{work_output[:1000]}")
+
+            await send_long_webhook(
+                webhook,
+                work_output,
+                username=f"{member} | {persona['title']}",
+                avatar_url=persona["avatar"]
+            )
+            await asyncio.sleep(1.5)
 
 if __name__ == "__main__":
     bot.run(os.getenv("DISCORD_BOT_TOKEN"))
