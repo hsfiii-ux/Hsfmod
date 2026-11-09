@@ -8,7 +8,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# دالة ذكية تجرب الموديلات الحديثة بالترتيب حتى تجد الموديل الفعال في حسابك
+# دالة ذكية لتوليد الردود بأحدث موديل
 def generate_smart_reply(prompt_text):
     candidate_models = [
         "gemini-3.8-flash",
@@ -16,7 +16,6 @@ def generate_smart_reply(prompt_text):
         "gemini-2.5-flash",
         "gemini-2.0-flash",
     ]
-    # إضافة أي موديل متاح في الحساب تلقائياً
     try:
         for m in genai.list_models():
             if "generateContent" in m.supported_generation_methods:
@@ -37,10 +36,15 @@ def generate_smart_reply(prompt_text):
             last_err = str(e)
             continue
 
-    return f"تعذر الاتصال بالموديل، آخر خطأ: {last_err}"
+    return f"تعذر الاتصال بالموديل: {last_err}"
 
-# بطاقات شخصيات الفريق
+# بطاقات شخصيات الفريق الستة (بإضافة ملهم)
 TEAM_PERSONAS = {
+    "ملهم": {
+        "title": "Creative Ideator AI",
+        "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Molhem&backgroundColor=ffe082",
+        "prompt": "أنت 'ملهم' مفكر الاستوديو وصانع الأفكار والعوالم (Creative Ideator & Worldbuilder AI). مهمتك: توليد أفكار ألعاب إبداعية وغير مسبوقة، وابتكار ميكانيكيات لعب جنونية وممتعة، وبناء حبكات وقصص وشخصيات تجعل اللعبة فريدة جداً ومميزة."
+    },
     "أحمد": {
         "title": "Game Director AI",
         "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Ahmed&backgroundColor=b6e3f4",
@@ -88,7 +92,7 @@ async def call_ai_persona(persona_key, user_prompt, chat_context=""):
         f"{persona['prompt']}\n\n"
         f"سياق المحادثة الأخيرة:\n{chat_context}\n\n"
         f"رسالة المستخدم:\n{user_prompt}\n\n"
-        f"أجب بصفتك {persona_key} ({persona['title']}) بالعربية، بإيجاز واحترافية."
+        f"أجب بصفتك {persona_key} ({persona['title']}) بالعربية، بإيجاز وإبداع واحترافية."
     )
     return generate_smart_reply(full_prompt)
 
