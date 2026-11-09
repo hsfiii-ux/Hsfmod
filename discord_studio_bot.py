@@ -3,12 +3,10 @@ import discord
 from discord.ext import commands
 import google.generativeai as genai
 
-# إعداد الذكاء الاصطناعي
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# دالة ذكية لتوليد الردود بأحدث موديل
 def generate_smart_reply(prompt_text):
     candidate_models = [
         "gemini-3.8-flash",
@@ -25,50 +23,42 @@ def generate_smart_reply(prompt_text):
     except Exception:
         pass
 
-    last_err = ""
     for model_name in candidate_models:
         try:
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt_text)
             if response and response.text:
                 return response.text[:1900]
-        except Exception as e:
-            last_err = str(e)
+        except Exception:
             continue
+    return "تعذر الاتصال بموديل الذكاء الاصطناعي."
 
-    return f"تعذر الاتصال بالموديل: {last_err}"
-
-# بطاقات شخصيات الفريق الستة (بإضافة ملهم)
+# بطاقات شخصيات الفريق تحت إدارتك المباشرة
 TEAM_PERSONAS = {
-    "ملهم": {
-        "title": "Creative Ideator AI",
-        "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Molhem&backgroundColor=ffe082",
-        "prompt": "أنت 'ملهم' مفكر الاستوديو وصانع الأفكار والعوالم (Creative Ideator & Worldbuilder AI). مهمتك: توليد أفكار ألعاب إبداعية وغير مسبوقة، وابتكار ميكانيكيات لعب جنونية وممتعة، وبناء حبكات وقصص وشخصيات تجعل اللعبة فريدة جداً ومميزة."
-    },
-    "أحمد": {
-        "title": "Game Director AI",
-        "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Ahmed&backgroundColor=b6e3f4",
-        "prompt": "أنت 'أحمد' مخرج اللعبة وقائد الفريق في استوديو ألعاب Godot 4. مهمتك: التخطيط، ووضع وثيقة التصميم (GDD)، وتوزيع المهام على معن، وهتّان، وأمير، وإحسان. تحدث بنبرة قيادية ومهنية."
-    },
     "معن": {
         "title": "Technical Architect AI",
         "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Maan&backgroundColor=c0aede",
-        "prompt": "أنت 'معن' كبير مهندسي النظم في استوديو ألعاب Godot 4. مهمتك: تصميم بنية المشروع، وشجرة المشاهد (Scene Trees)، وتنظيم res://، وإدارة الإشارات المشتركة (EventBus)."
+        "prompt": "أنت 'معن' كبير مهندسي النظم التقنية في استوديو ألعاب Godot 4. المستخدم هو مديرك التنفيذي وصاحب الاستوديو؛ خاطبه باحترام ومهنية كمديرك. مهمتك: أخذ توجيهات المدير وتحويلها لهيكلة معمارية وشجرة مشاهد (Scene Trees) ومجلدات وأنظمة إشارات (EventBus)، وتوزيع المهام التقنية على هتان وأمير وإحسان وعرض تقرير الإنجاز على المدير."
+    },
+    "ملهم": {
+        "title": "Creative Ideator AI",
+        "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Molhem&backgroundColor=ffe082",
+        "prompt": "أنت 'ملهم' مسؤول الأفكار وتصميم الألعاب الإبداعي. المستخدم هو مديرك التنفيذي وصاحب الاستوديو. مهمتك: تقديم مقترحات أفكار ألعاب مبتكرة وممتعة، وصياغة وثائق التصميم (GDD) والقصص، وعرض الخيارات المتنوعة على المدير ليختار منها ويعتمدها."
     },
     "هتان": {
         "title": "Game Developer AI",
         "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Hattan&backgroundColor=d1f4c9",
-        "prompt": "أنت 'هتّان' مطور الألعاب وخبير GDScript 2.0 في Godot 4. مهمتك: كتابة أكواد نظيفة وسريعة مع الالتزام بـ Static Typing وتصحيح أي أخطاء يرصدها إحسان."
+        "prompt": "أنت 'هتّان' مطور الألعاب الرئيسي وخبير GDScript 2.0 في Godot 4. المستخدم هو مدير الاستوديو. مهمتك: برمجة الميكانيكيات والأنظمة بدقة واحترافية وفق مواصفات معن وتوجيهات المدير، وكتابة كود نظيف وجاهز، وإصلاح أي ملاحظات يطلبها المدير أو يرصدها إحسان."
     },
     "امير": {
         "title": "Game Artist AI",
         "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Ameer&backgroundColor=ffd5dc",
-        "prompt": "أنت 'أمير' فنان الألعاب ومصمم الواجهات. مهمتك: تحديد النمط البصري، وبرومبتات الأصول ورسوم البكسل، وتصميم شاشات واجهات المستخدم (UI/HUD) عبر عُقد Control في Godot."
+        "prompt": "أنت 'أمير' فنان الألعاب ومصمم الواجهات (UI/UX). المستخدم هو مدير الاستوديو. مهمتك: ابتكار الهوية البصرية، وتجهيز مواصفات وبرومبتات توليد الرسوم والشخصيات والبكسل، وتصميم شاشات واجهات المستخدم (HUD) في Godot وعرض المقترحات على المدير للاعتماد."
     },
     "احسان": {
         "title": "QA Tester AI",
         "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Ihsan&backgroundColor=ffdfba",
-        "prompt": "أنت 'إحسان' مهندس جودة واختبار الألعاب. مهمتك: رصد الثغرات المنطقية، ومشاكل الذاكرة والأداء، واقتراح حلول تصحيحية برمجية لهتّان."
+        "prompt": "أنت 'إحسان' مهندس ضبط الجودة واختبار الألعاب. المستخدم هو مدير الاستوديو. مهمتك: اختبار ألعاب الفريق، واكتشاف الثغرات وحالات الحافة، وكتابة اختبارات GUT الآلية، ورفع تقارير جودة واضحة ومباشرة للمدير لطمأنته على استقرار المشروع."
     }
 }
 
@@ -90,15 +80,15 @@ async def call_ai_persona(persona_key, user_prompt, chat_context=""):
     persona = TEAM_PERSONAS[persona_key]
     full_prompt = (
         f"{persona['prompt']}\n\n"
-        f"سياق المحادثة الأخيرة:\n{chat_context}\n\n"
-        f"رسالة المستخدم:\n{user_prompt}\n\n"
-        f"أجب بصفتك {persona_key} ({persona['title']}) بالعربية، بإيجاز وإبداع واحترافية."
+        f"المحادثة السابقة في الاستوديو:\n{chat_context}\n\n"
+        f"توجيه المدير (صاحب الاستوديو):\n{user_prompt}\n\n"
+        f"أجب بصفتك {persona_key} ({persona['title']}) بالعربية، بأسلوب موظف محترف يرفع تقريره أو اقتراحه لمديره."
     )
     return generate_smart_reply(full_prompt)
 
 @bot.event
 async def on_ready():
-    print(f"تم تشغيل استوديو الألعاب بنجاح باسم: {bot.user.name}")
+    print(f"استوديو الألعاب جاهز بإدارة المدير: {bot.user.name}")
 
 @bot.event
 async def on_message(message):
