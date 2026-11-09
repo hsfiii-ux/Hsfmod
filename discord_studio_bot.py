@@ -8,23 +8,36 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# اختيار أحدث موديل متاح تلقائياً
-def get_working_model():
-    preferred = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-pro"]
+# دالة ذكية تجرب الموديلات الحديثة بالترتيب حتى تجد الموديل الفعال في حسابك
+def generate_smart_reply(prompt_text):
+    candidate_models = [
+        "gemini-3.8-flash",
+        "gemini-3.0-flash",
+        "gemini-2.5-flash",
+        "gemini-2.0-flash",
+    ]
+    # إضافة أي موديل متاح في الحساب تلقائياً
     try:
-        available = [
-            m.name.replace("models/", "")
-            for m in genai.list_models()
-            if "generateContent" in m.supported_generation_methods
-        ]
-        for p in preferred:
-            if p in available:
-                return genai.GenerativeModel(p)
-        if available:
-            return genai.GenerativeModel(available[0])
+        for m in genai.list_models():
+            if "generateContent" in m.supported_generation_methods:
+                name = m.name.replace("models/", "")
+                if name not in candidate_models:
+                    candidate_models.insert(0, name)
     except Exception:
         pass
-    return genai.GenerativeModel("gemini-2.0-flash")
+
+    last_err = ""
+    for model_name in candidate_models:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt_text)
+            if response and response.text:
+                return response.text[:1900]
+        except Exception as e:
+            last_err = str(e)
+            continue
+
+    return f"تعذر الاتصال بالموديل، آخر خطأ: {last_err}"
 
 # بطاقات شخصيات الفريق
 TEAM_PERSONAS = {
@@ -77,12 +90,7 @@ async def call_ai_persona(persona_key, user_prompt, chat_context=""):
         f"رسالة المستخدم:\n{user_prompt}\n\n"
         f"أجب بصفتك {persona_key} ({persona['title']}) بالعربية، بإيجاز واحترافية."
     )
-    try:
-        model = get_working_model()
-        response = model.generate_content(full_prompt)
-        return response.text[:1900]
-    except Exception as e:
-        return f"حدث خطأ في الاتصال بالذكاء الاصطناعي: {e}"
+    return generate_smart_reply(full_prompt)
 
 @bot.event
 async def on_ready():
