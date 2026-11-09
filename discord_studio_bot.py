@@ -1,61 +1,52 @@
 import os
-import asyncio
+from collections import deque
 import discord
 from discord.ext import commands
 import google.generativeai as genai
 
-# إعداد الذكاء الاصطناعي
+# 1. إعداد الذكاء الاصطناعي والموديل السريع مباشرة
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
-# تثبيت الموديل الأسرع مباشرة بدون تأخير
-FAST_MODEL = genai.GenerativeModel("gemini-2.5-flash")
+MODEL = genai.GenerativeModel(
+    model_name="gemini-3.8-flash",
+    generation_config={
+        "max_output_tokens": 900,
+        "temperature": 0.6,
+    }
+)
 
-def run_gemini_fast(prompt_text):
-    try:
-        response = FAST_MODEL.generate_content(
-            prompt_text,
-            generation_config={"max_output_tokens": 800, "temperature": 0.7}
-        )
-        if response and response.text:
-            return response.text[:1900]
-    except Exception:
-        # بديل فوري في حال تعذر الأول
-        try:
-            fallback = genai.GenerativeModel("gemini-2.0-flash")
-            res = fallback.generate_content(prompt_text)
-            return res.text[:1900]
-        except Exception as e:
-            return f"عذراً يا مديرنا، واجهت مشكلة سريعة: {e}"
-    return "عذراً يا مديرنا، لم أستطع توليد الرد حالياً."
+# 2. ذاكرة كاش فورية في الـ RAM (لسرعة 0ms)
+WEBHOOK_CACHE = {}
+CHAT_MEMORY = deque(maxlen=6)
 
-# بطاقات شخصيات الفريق تحت قيادتك كمدير
+# 3. بطاقات الفريق تحت إدارتك المباشرة
 TEAM_PERSONAS = {
     "معن": {
         "title": "Technical Architect AI",
         "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Maan&backgroundColor=c0aede",
-        "prompt": "أنت 'معن' كبير مهندسي النظم التقنية في استوديو ألعاب Godot 4. المستخدم هو مديرك التنفيذي وصاحب الاستوديو؛ خاطبه باحترام ومهنية كمديرك. مهمتك: أخذ توجيهات المدير وتحويلها لهيكلة معمارية وشجرة مشاهد (Scene Trees) ومجلدات وأنظمة إشارات (EventBus)، وتوزيع المهام التقنية على هتان وأمير وإحسان وعرض تقرير الإنجاز على المدير بإيجاز واحترافية."
+        "prompt": "أنت 'معن' كبير مهندسي النظم في Godot 4. المستخدم هو مدير الاستوديو. نفذ أوامره فوراً: صمم شجرة المشاهد (Scene Trees)، المجلدات، والـ EventBus باختصار ودقة هندسية."
     },
     "ملهم": {
         "title": "Creative Ideator AI",
         "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Molhem&backgroundColor=ffe082",
-        "prompt": "أنت 'ملهم' مسؤول الأفكار وتصميم الألعاب الإبداعي. المستخدم هو مديرك التنفيذي وصاحب الاستوديو. مهمتك: تقديم مقترحات أفكار ألعاب مبتكرة وممتعة، وصياغة وثائق التصميم (GDD) والقصص، وعرض الخيارات المتنوعة على المدير ليختار منها بإيجاز وذكاء."
+        "prompt": "أنت 'ملهم' مفكر الاستوديو ومصمم الألعاب. المستخدم هو مدير الاستوديو. نفذ أوامره فوراً: ابتكر أفكار ألعاب، قصص، ووثائق GDD مركزة ومبهرة."
     },
     "هتان": {
         "title": "Game Developer AI",
         "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Hattan&backgroundColor=d1f4c9",
-        "prompt": "أنت 'هتّان' مطور الألعاب الرئيسي وخبير GDScript 2.0 في Godot 4. المستخدم هو مدير الاستوديو. مهمتك: برمجة الميكانيكيات والأنظمة بدقة واحترافية وفق مواصفات معن وتوجيهات المدير، وكتابة كود نظيف وسريع، وإصلاح أي ملاحظات يطلبها المدير أو يرصدها إحسان."
+        "prompt": "أنت 'هتّان' مبرمج GDScript 2.0 في Godot 4. المستخدم هو مدير الاستوديو. نفذ أوامره فوراً: اكتب كود GDScript نظيف وجاهز للنسخ مع Static Typing مباشرة بدون مقدمات طويلة."
     },
     "امير": {
         "title": "Game Artist AI",
         "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Ameer&backgroundColor=ffd5dc",
-        "prompt": "أنت 'أمير' فنان الألعاب ومصمم الواجهات (UI/UX). المستخدم هو مدير الاستوديو. مهمتك: ابتكار الهوية البصرية، وتجهيز مواصفات وبرومبتات توليد الرسوم والشخصيات والبكسل، وتصميم شاشات واجهات المستخدم (HUD) في Godot وعرض المقترحات على المدير للاعتماد."
+        "prompt": "أنت 'أمير' فنان الألعاب ومصمم الواجهات. المستخدم هو مدير الاستوديو. نفذ أوامره فوراً: اعطِ برومبتات توليد الرسوم، الألوان، وتصميم عُقد Control في Godot مباشرة."
     },
     "احسان": {
         "title": "QA Tester AI",
         "avatar": "https://api.dicebear.com/7.x/bottts/png?seed=Ihsan&backgroundColor=ffdfba",
-        "prompt": "أنت 'إحسان' مهندس ضبط الجودة واختبار الألعاب. المستخدم هو مدير الاستوديو. مهمتك: اختبار ألعاب الفريق، واكتشاف الثغرات وحالات الحافة، وكتابة اختبارات GUT الآلية، ورفع تقارير جودة واضحة ومباشرة للمدير لطمأنته على استقرار المشروع."
+        "prompt": "أنت 'إحسان' مهندس جودة واختبار الألعاب. المستخدم هو مدير الاستوديو. نفذ أوامره فوراً: افحص الكود، استخرج الثغرات، واكتب اختبارات GUT وتقارير الأخطاء باختصار."
     }
 }
 
@@ -63,28 +54,39 @@ intents = discord.Intents.default()
 intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-async def get_or_create_webhook(channel):
-    webhooks = await channel.webhooks()
-    for wh in webhooks:
-        if wh.name == "StudioAIWebhook":
-            return wh
-    return await channel.create_webhook(name="StudioAIWebhook")
-
 def normalize_name(text):
     return text.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه").replace("ّ", "").strip()
 
-def build_prompt(persona_key, user_prompt, chat_context=""):
+async def get_fast_webhook(channel):
+    if channel.id in WEBHOOK_CACHE:
+        return WEBHOOK_CACHE[channel.id]
+    webhooks = await channel.webhooks()
+    for wh in webhooks:
+        if wh.name == "StudioAIWebhook":
+            WEBHOOK_CACHE[channel.id] = wh
+            return wh
+    wh = await channel.create_webhook(name="StudioAIWebhook")
+    WEBHOOK_CACHE[channel.id] = wh
+    return wh
+
+async def ask_agent_turbo(persona_key, user_prompt):
     persona = TEAM_PERSONAS[persona_key]
-    return (
-        f"{persona['prompt']}\n\n"
-        f"المحادثة السابقة في الاستوديو:\n{chat_context}\n\n"
-        f"توجيه المدير (صاحب الاستوديو):\n{user_prompt}\n\n"
-        f"أجب بصفتك {persona_key} ({persona['title']}) بالعربية بإيجاز وذكاء وسرعة."
+    context_str = "\n".join(CHAT_MEMORY)
+    full_prompt = (
+        f"{persona['prompt']}\n"
+        f"سياق المحادثة:\n{context_str}\n"
+        f"أمر المدير: {user_prompt}\n"
+        f"نفذ الأمر مباشرة بصفتك {persona_key}:"
     )
+    try:
+        response = await MODEL.generate_content_async(full_prompt)
+        return response.text[:1900] if response and response.text else "تم التنفيذ."
+    except Exception as e:
+        return f"خطأ تقني: {e}"
 
 @bot.event
 async def on_ready():
-    print(f"استوديو الألعاب السريع جاهز: {bot.user.name}")
+    print(f"Turbo Studio Bot Online: {bot.user.name}")
 
 @bot.event
 async def on_message(message):
@@ -92,33 +94,33 @@ async def on_message(message):
         return
 
     content = message.content.strip()
-    target_member = None
+    if not content:
+        return
 
-    for key in TEAM_PERSONAS.keys():
-        if normalize_name(key) in normalize_name(content):
-            target_member = key
-            break
+    norm_content = normalize_name(content)
 
-    if target_member:
-        async with message.channel.typing():
-            history_msgs = []
-            async for prev_msg in message.channel.history(limit=4):
-                history_msgs.append(f"{prev_msg.author.display_name}: {prev_msg.content}")
-            context_str = "\n".join(reversed(history_msgs))
+    # إذا قال المدير "يا فريق" أو "الكل"، يردون جميعاً بالتتابع السريع
+    if "فريق" in norm_content or "الكل" in norm_content or "شباب" in norm_content:
+        targets = list(TEAM_PERSONAS.keys())
+    else:
+        targets = [k for k in TEAM_PERSONAS.keys() if normalize_name(k) in norm_content]
 
-            full_prompt = build_prompt(target_member, content, context_str)
-            reply_text = await asyncio.to_thread(run_gemini_fast, full_prompt)
-            persona = TEAM_PERSONAS[target_member]
+    if not targets:
+        return
 
-            webhook = await get_or_create_webhook(message.channel)
-            await webhook.send(
-                content=reply_text,
-                username=f"{target_member} | {persona['title']}",
-                avatar_url=persona["avatar"]
-            )
-            return
+    CHAT_MEMORY.append(f"المدير: {content}")
+    webhook = await get_fast_webhook(message.channel)
 
-    await bot.process_commands(message)
+    for member in targets:
+        persona = TEAM_PERSONAS[member]
+        reply_text = await ask_agent_turbo(member, content)
+        CHAT_MEMORY.append(f"{member}: {reply_text[:200]}")
+
+        await webhook.send(
+            content=reply_text,
+            username=f"{member} | {persona['title']}",
+            avatar_url=persona["avatar"]
+        )
 
 if __name__ == "__main__":
     bot.run(os.getenv("DISCORD_BOT_TOKEN"))
