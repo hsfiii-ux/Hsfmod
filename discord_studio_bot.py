@@ -8,6 +8,24 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
 
+# اختيار أحدث موديل متاح تلقائياً
+def get_working_model():
+    preferred = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-pro"]
+    try:
+        available = [
+            m.name.replace("models/", "")
+            for m in genai.list_models()
+            if "generateContent" in m.supported_generation_methods
+        ]
+        for p in preferred:
+            if p in available:
+                return genai.GenerativeModel(p)
+        if available:
+            return genai.GenerativeModel(available[0])
+    except Exception:
+        pass
+    return genai.GenerativeModel("gemini-2.0-flash")
+
 # بطاقات شخصيات الفريق
 TEAM_PERSONAS = {
     "أحمد": {
@@ -60,9 +78,9 @@ async def call_ai_persona(persona_key, user_prompt, chat_context=""):
         f"أجب بصفتك {persona_key} ({persona['title']}) بالعربية، بإيجاز واحترافية."
     )
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = get_working_model()
         response = model.generate_content(full_prompt)
-        return response.text
+        return response.text[:1900]
     except Exception as e:
         return f"حدث خطأ في الاتصال بالذكاء الاصطناعي: {e}"
 
@@ -72,7 +90,7 @@ async def on_ready():
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:
+    if message.author.bot or message.webhook_id is not None:
         return
 
     content = message.content.strip()
